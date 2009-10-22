@@ -76,15 +76,18 @@ unsigned int read_4(unsigned char **pData) {
 // tuples, lists
 
 VALUE read_small_tuple(unsigned char **pData) {
+  int arity;
+  VALUE array;
+  int i;
+
   if(read_1(pData) != ERL_SMALL_TUPLE) {
     rb_raise(rb_eStandardError, "Invalid Type, not a small tuple");
   }
 
-  int arity = read_1(pData);
+  arity = read_1(pData);
 
-  VALUE array = rb_ary_new2(arity);
+  array = rb_ary_new2(arity);
 
-  int i;
   for(i = 0; i < arity; ++i) {
     rb_ary_store(array, i, read_any_raw(pData));
   }
@@ -93,15 +96,18 @@ VALUE read_small_tuple(unsigned char **pData) {
 }
 
 VALUE read_large_tuple(unsigned char **pData) {
+  int arity;
+  VALUE array;
+  int i;
+
   if(read_1(pData) != ERL_LARGE_TUPLE) {
     rb_raise(rb_eStandardError, "Invalid Type, not a large tuple");
   }
 
-  int arity = read_4(pData);
+  arity = read_4(pData);
 
-  VALUE array = rb_ary_new2(arity);
+  array = rb_ary_new2(arity);
 
-  int i;
   for(i = 0; i < arity; ++i) {
     rb_ary_store(array, i, read_any_raw(pData));
   }
@@ -110,16 +116,20 @@ VALUE read_large_tuple(unsigned char **pData) {
 }
 
 VALUE read_list(unsigned char **pData) {
+  int size;
+  VALUE newref_class;
+  VALUE array;
+  int i;
+
   if(read_1(pData) != ERL_LIST) {
     rb_raise(rb_eStandardError, "Invalid Type, not an erlang list");
   }
 
-  int size = read_4(pData);
+  size = read_4(pData);
 
-  VALUE newref_class = rb_const_get(mErlectricity, rb_intern("List"));
-  VALUE array = rb_funcall(newref_class, rb_intern("new"), 1, INT2NUM(size));
+  newref_class = rb_const_get(mErlectricity, rb_intern("List"));
+  array = rb_funcall(newref_class, rb_intern("new"), 1, INT2NUM(size));
 
-  int i;
   for(i = 0; i < size; ++i) {
     rb_ary_store(array, i, read_any_raw(pData));
   }
@@ -138,77 +148,107 @@ void read_string_raw(unsigned char *dest, unsigned char **pData, int length) {
 }
 
 VALUE read_bin(unsigned char **pData) {
+  int length;
+  unsigned char *buf;
+  VALUE ret;
+
   if(read_1(pData) != ERL_BIN) {
     rb_raise(rb_eStandardError, "Invalid Type, not an erlang binary");
   }
 
-  int length = read_4(pData);
+  length = read_4(pData);
 
-  unsigned char buf[length + 1];
+  if (!(buf = (unsigned char*)malloc(length + 1))) {
+    rb_raise(rb_eStandardError, "Can't alloc enough memory");
+  }
   read_string_raw(buf, pData, length);
 
-  return rb_str_new((char *) buf, length);
+  ret = rb_str_new((char *) buf, length);
+  free(buf);
+
+  return ret;
 }
 
 VALUE read_string(unsigned char **pData) {
+  int length;
+  unsigned char *buf;
+  VALUE newref_class;
+  VALUE array;
+  int i = 0;
+
   if(read_1(pData) != ERL_STRING) {
     rb_raise(rb_eStandardError, "Invalid Type, not an erlang string");
   }
 
-  int length = read_2(pData);
+  length = read_2(pData);
 
-  unsigned char buf[length + 1];
+  if (!(buf = (unsigned char*)malloc(length + 1))) {
+    rb_raise(rb_eStandardError, "Can't alloc enough memory");
+  }
   read_string_raw(buf, pData, length);
 
-  VALUE newref_class = rb_const_get(mErlectricity, rb_intern("List"));
-  VALUE array = rb_funcall(newref_class, rb_intern("new"), 1, INT2NUM(length));
+  newref_class = rb_const_get(mErlectricity, rb_intern("List"));
+  array = rb_funcall(newref_class, rb_intern("new"), 1, INT2NUM(length));
 
-  int i = 0;
   for(i; i < length; ++i) {
     rb_ary_store(array, i, INT2NUM(*(buf + i)));
   }
+  free(buf);
 
   return array;
 }
 
 VALUE read_atom(unsigned char **pData) {
+  int length;
+  unsigned char *buf;
+
   if(read_1(pData) != ERL_ATOM) {
     rb_raise(rb_eStandardError, "Invalid Type, not an atom");
   }
 
-  int length = read_2(pData);
+  length = read_2(pData);
 
-  unsigned char buf[length + 1];
+  if (!(buf = (unsigned char*)malloc(length + 1))) {
+    rb_raise(rb_eStandardError, "Can't alloc enough memory");
+  }
   read_string_raw(buf, pData, length);
 
   // Erlang true and false are actually atoms
   if(length == 4 && strncmp((char *) buf, "true", length) == 0) {
+    free(buf);
     return Qtrue;
   } else if(length == 5 && strncmp((char *) buf, "false", length) == 0) {
+    free(buf);
     return Qfalse;
   } else {
-    return ID2SYM(rb_intern((char *) buf));
+    VALUE ret = ID2SYM(rb_intern((char *) buf));
+    free(buf);
+    return ret;
   }
 }
 
 VALUE read_small_int(unsigned char **pData) {
+  int value;
   if(read_1(pData) != ERL_SMALL_INT) {
     rb_raise(rb_eStandardError, "Invalid Type, not a small int");
   }
 
-  int value = read_1(pData);
+  value = read_1(pData);
 
   return INT2FIX(value);
 }
 
 VALUE read_int(unsigned char **pData) {
+  long long value;
+  long long negative;
+
   if(read_1(pData) != ERL_INT) {
     rb_raise(rb_eStandardError, "Invalid Type, not an int");
   }
 
-  long long value = read_4(pData);
+  value = read_4(pData);
 
-  long long negative = ((value >> 31) & 0x1 == 1);
+  negative = ((value >> 31) & 0x1 == 1);
 
   if(negative) {
     value = (value - ((long long) 1 << 32));
@@ -218,25 +258,33 @@ VALUE read_int(unsigned char **pData) {
 }
 
 VALUE read_small_bignum(unsigned char **pData) {
+  unsigned int size;
+  unsigned int sign;
+  VALUE num;
+  VALUE tmp;
+  unsigned char *buf;
+  int i;
+
   if(read_1(pData) != ERL_SMALL_BIGNUM) {
     rb_raise(rb_eStandardError, "Invalid Type, not a small bignum");
   }
 
-  unsigned int size = read_1(pData);
-  unsigned int sign = read_1(pData);
+  size = read_1(pData);
+  sign = read_1(pData);
 
-  VALUE num = INT2NUM(0);
-  VALUE tmp;
+  num = INT2NUM(0);
 
-  unsigned char buf[size + 1];
+  if (!(buf = (unsigned char*)malloc(size + 1))) {
+    rb_raise(rb_eStandardError, "Can't alloc enough memory");
+  }
   read_string_raw(buf, pData, size);
 
-  int i;
   for(i = 0; i < size; ++i) {
     tmp = INT2FIX(*(buf + i));
     tmp = rb_funcall(tmp, rb_intern("<<"), 1, INT2NUM(i * 8));
     num = rb_funcall(num, rb_intern("+"), 1, tmp);
   }
+  free(buf);
 
   if(sign) {
     num = rb_funcall(num, rb_intern("*"), 1, INT2NUM(-1));
@@ -246,26 +294,34 @@ VALUE read_small_bignum(unsigned char **pData) {
 }
 
 VALUE read_large_bignum(unsigned char **pData) {
+  unsigned int size;
+  unsigned int sign;
+  VALUE num;
+  VALUE tmp;
+  unsigned char *buf;
+  int i;
+
   if(read_1(pData) != ERL_LARGE_BIGNUM) {
     rb_raise(rb_eStandardError, "Invalid Type, not a small bignum");
   }
 
-  unsigned int size = read_4(pData);
-  unsigned int sign = read_1(pData);
+  size = read_4(pData);
+  sign = read_1(pData);
 
-  VALUE num = INT2NUM(0);
-  VALUE tmp;
+  num = INT2NUM(0);
 
-  unsigned char buf[size + 1];
+  if (!(buf = (unsigned char*)malloc(size + 1))) {
+    rb_raise(rb_eStandardError, "Can't alloc enough memory");
+  }
   read_string_raw(buf, pData, size);
 
-  int i;
   for(i = 0; i < size; ++i) {
     tmp = INT2FIX(*(buf + i));
     tmp = rb_funcall(tmp, rb_intern("<<"), 1, INT2NUM(i * 8));
 
     num = rb_funcall(num, rb_intern("+"), 1, tmp);
   }
+  free(buf);
 
   if(sign) {
     num = rb_funcall(num, rb_intern("*"), 1, INT2NUM(-1));
@@ -275,59 +331,75 @@ VALUE read_large_bignum(unsigned char **pData) {
 }
 
 VALUE read_float(unsigned char **pData) {
+  unsigned char buf[32];
+  VALUE rString;
+
   if(read_1(pData) != ERL_FLOAT) {
     rb_raise(rb_eStandardError, "Invalid Type, not a float");
   }
 
-  unsigned char buf[32];
   read_string_raw(buf, pData, 31);
 
-  VALUE rString = rb_str_new2((char *) buf);
+  rString = rb_str_new2((char *) buf);
 
   return rb_funcall(rString, rb_intern("to_f"), 0);
 }
 
 VALUE read_nil(unsigned char **pData) {
+  VALUE newref_class;
+
   if(read_1(pData) != ERL_NIL) {
     rb_raise(rb_eStandardError, "Invalid Type, not a nil list");
   }
 
-  VALUE newref_class = rb_const_get(mErlectricity, rb_intern("List"));
+  newref_class = rb_const_get(mErlectricity, rb_intern("List"));
   return rb_funcall(newref_class, rb_intern("new"), 0);
 }
 
 // specials
 
 VALUE read_pid(unsigned char **pData) {
+  VALUE node;
+  VALUE id;
+  VALUE serial;
+  VALUE creation;
+  VALUE pid_class;
+
   if(read_1(pData) != ERL_PID) {
     rb_raise(rb_eStandardError, "Invalid Type, not a pid");
   }
 
-  VALUE node = read_atom(pData);
-  VALUE id = INT2NUM(read_4(pData));
-  VALUE serial = INT2NUM(read_4(pData));
-  VALUE creation = INT2FIX(read_1(pData));
+  node = read_atom(pData);
+  id = INT2NUM(read_4(pData));
+  serial = INT2NUM(read_4(pData));
+  creation = INT2FIX(read_1(pData));
 
-  VALUE pid_class = rb_const_get(mErlectricity, rb_intern("Pid"));
+  pid_class = rb_const_get(mErlectricity, rb_intern("Pid"));
   return rb_funcall(pid_class, rb_intern("new"), 4, node, id, serial, creation);
 }
 
 VALUE read_new_reference(unsigned char **pData) {
+  int size;
+  VALUE node;
+  VALUE creation;
+  VALUE id;
+  int i;
+  VALUE newref_class;
+
   if(read_1(pData) != ERL_NEW_REF) {
     rb_raise(rb_eStandardError, "Invalid Type, not a new-style reference");
   }
 
-  int size = read_2(pData);
-  VALUE node = read_atom(pData);
-  VALUE creation = INT2FIX(read_1(pData));
+  size = read_2(pData);
+  node = read_atom(pData);
+  creation = INT2FIX(read_1(pData));
 
-  VALUE id = rb_ary_new2(size);
-  int i;
+  id = rb_ary_new2(size);
   for(i = 0; i < size; ++i) {
     rb_ary_store(id, i, INT2NUM(read_4(pData)));
   }
 
-  VALUE newref_class = rb_const_get(mErlectricity, rb_intern("NewReference"));
+  newref_class = rb_const_get(mErlectricity, rb_intern("NewReference"));
   return rb_funcall(newref_class, rb_intern("new"), 3, node, creation, id);
 }
 
