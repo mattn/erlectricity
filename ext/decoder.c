@@ -96,7 +96,7 @@ VALUE read_small_tuple(unsigned char **pData) {
 }
 
 VALUE read_large_tuple(unsigned char **pData) {
-  int arity;
+  unsigned int arity;
   VALUE array;
   int i;
 
@@ -116,7 +116,7 @@ VALUE read_large_tuple(unsigned char **pData) {
 }
 
 VALUE read_list(unsigned char **pData) {
-  int size;
+  unsigned int size;
   VALUE newref_class;
   VALUE array;
   int i;
@@ -141,16 +141,16 @@ VALUE read_list(unsigned char **pData) {
 
 // primitives
 
-void read_string_raw(unsigned char *dest, unsigned char **pData, int length) {
+void read_string_raw(unsigned char *dest, unsigned char **pData, unsigned int length) {
   memcpy((char *) dest, (char *) *pData, length);
   *(dest + length) = (unsigned char) 0;
   *pData += length;
 }
 
 VALUE read_bin(unsigned char **pData) {
-  int length;
-  unsigned char *buf;
+  unsigned int length;
   VALUE ret;
+  VALUE rStr;
 
   if(read_1(pData) != ERL_BIN) {
     rb_raise(rb_eStandardError, "Invalid Type, not an erlang binary");
@@ -158,15 +158,10 @@ VALUE read_bin(unsigned char **pData) {
 
   length = read_4(pData);
 
-  if (!(buf = (unsigned char*)malloc(length + 1))) {
-    rb_raise(rb_eStandardError, "Can't alloc enough memory");
-  }
-  read_string_raw(buf, pData, length);
+  rStr = rb_str_new((char *) *pData, length);
+  *pData += length;
 
-  ret = rb_str_new((char *) buf, length);
-  free(buf);
-
-  return ret;
+  return rStr;
 }
 
 VALUE read_string(unsigned char **pData) {
@@ -181,19 +176,13 @@ VALUE read_string(unsigned char **pData) {
   }
 
   length = read_2(pData);
-
-  if (!(buf = (unsigned char*)malloc(length + 1))) {
-    rb_raise(rb_eStandardError, "Can't alloc enough memory");
-  }
-  read_string_raw(buf, pData, length);
-
   newref_class = rb_const_get(mErlectricity, rb_intern("List"));
   array = rb_funcall(newref_class, rb_intern("new"), 1, INT2NUM(length));
 
   for(i; i < length; ++i) {
-    rb_ary_store(array, i, INT2NUM(*(buf + i)));
+    rb_ary_store(array, i, INT2NUM(**pData));
+    *pData += 1;
   }
-  free(buf);
 
   return array;
 }

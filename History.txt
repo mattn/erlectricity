@@ -1,3 +1,9 @@
+== 1.1.1 / 2009-10-28
+  * Bug Fixes
+    * Fix bignum encoding
+    * Prevent stack overflow for massive binaries in c decoder
+    * Optimize strings in c decoder
+
 == 1.1.0 / 2009-10-08
   * Minor Improvements
     * Implement Bignum encoding
